@@ -2,7 +2,7 @@
 
 # Main test
 add_executable(test_mma main.cpp)
-target_link_libraries(test_mma PRIVATE mma::mma)
+target_link_libraries(test_mma PRIVATE mma::mma mma::sparse_mma)
 
 # Triangle test
 add_executable(test_triangle triangle.cpp)

@@ -1,7 +1,10 @@
 ################################################################################
 
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.10)
 project(mma)
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ################################################################################
 
@@ -26,6 +29,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 ################################################################################
 
+# Include Eigen.
+include_directories("external/eigen")
+
 add_subdirectory(src/mma)
+add_subdirectory(src/sparse_mma)
 add_subdirectory(src/gcmma)
 add_subdirectory(tests)
