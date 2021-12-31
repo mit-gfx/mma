@@ -1,5 +1,5 @@
 # Main code
-add_library(mma_sparse_mma SparseMMASolver.cpp)
+add_library(mma_sparse_mma SparseMMASolver.cpp common.cpp)
 target_include_directories(mma_sparse_mma PUBLIC ..)
 
 # Let's get a little bit paranoid

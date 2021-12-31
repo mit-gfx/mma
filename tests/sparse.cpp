@@ -1,34 +1,12 @@
-#include "Eigen/Sparse"
-#include "Eigen/Dense"
 #include "mma/MMASolver.h"
 #include "sparse_mma/SparseMMASolver.h"
-#include <algorithm>
-#include <cmath>
-#include <deque>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <set>
-#include <sstream>
-#include <stack>
-#include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-#include <sys/time.h>
+#include "sparse_mma/common.h"
 
 // We test mma and sparse_mma on a sparse problem:
 // min_x 0.5 * x * A * x + b * x
 // s.t.  B * x <= c.
 //       lb <= x <= ub.
 // Here, both A and B are sparse matrices and A is symmetric positive definite.
-
-using real = double;
-using SparseMatrix = Eigen::SparseMatrix<real>;
-using MatrixXr = Eigen::Matrix<real, -1, -1>;
-using VectorXr = Eigen::Matrix<real, -1, 1>;
 
 // sparsity is between 0 and 1; larger sparsity = more sparse matrix.
 const SparseMatrix GenerateSparseMatrix(const int row_num, const int col_num, const real sparsity) {
@@ -65,57 +43,6 @@ const std::vector<real> VectorXrToStdVector(const VectorXr& v) {
 	std::vector<real> vv(n, 0);
 	for (int i = 0; i < n; ++i) vv[i] = v(i);
 	return vv;
-}
-
-const std::string GreenHead() {
-    return "\x1b[6;30;92m";
-}
-
-const std::string RedHead() {
-    return "\x1b[6;30;91m";
-}
-
-const std::string YellowHead() {
-    return "\x1b[6;30;93m";
-}
-
-const std::string CyanHead() {
-    return "\x1b[6;30;96m";
-}
-
-const std::string GreenTail() {
-    return "\x1b[0m";
-}
-
-const std::string RedTail() {
-    return "\x1b[0m";
-}
-
-const std::string YellowTail() {
-    return "\x1b[0m";
-}
-
-const std::string CyanTail() {
-    return "\x1b[0m";
-}
-
-// Timing.
-static std::stack<timeval> t_begins;
-
-void Tic() {
-    timeval t_begin;
-    gettimeofday(&t_begin, nullptr);
-    t_begins.push(t_begin);
-}
-
-void Toc(const std::string& message) {
-    timeval t_end;
-    gettimeofday(&t_end, nullptr);
-    timeval t_begin = t_begins.top();
-    const real t_interval = (t_end.tv_sec - t_begin.tv_sec) + (t_end.tv_usec - t_begin.tv_usec) / 1e6;
-    std::cout << CyanHead() << "[Timing] " << message << ": " << t_interval << "s"
-              << CyanTail() << std::endl;
-    t_begins.pop();
 }
 
 int main(int argc, char *argv[]) {
