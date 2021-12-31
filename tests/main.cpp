@@ -118,6 +118,7 @@ void ObjSens(
 	for (int i=0;i<n;i++) {
 		f[0] = f[0] + pow(x[i],2.0)+ pow(x[i],3.0);
 	}
+	f[0] /= (double)n;
 
 	for (int i=0;i<n;i++) {
 		df[i] = 2*x[i]+ 3*pow(x[i],2.0);

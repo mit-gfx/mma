@@ -2,7 +2,7 @@
 
 # Main test
 add_executable(test_mma main.cpp)
-target_link_libraries(test_mma PRIVATE mma::mma mma::sparse_mma)
+target_link_libraries(test_mma PRIVATE mma::mma)
 
 # Triangle test
 add_executable(test_triangle triangle.cpp)
@@ -15,3 +15,7 @@ target_link_libraries(test_pairwise PRIVATE mma::mma)
 # GCMMA test
 add_executable(test_gcmma toy.cpp)
 target_link_libraries(test_gcmma PRIVATE mma::mma mma::gcmma)
+
+# Sparse test
+add_executable(test_sparse sparse.cpp)
+target_link_libraries(test_sparse PRIVATE mma::mma mma::sparse_mma)
