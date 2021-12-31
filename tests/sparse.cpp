@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
 
 			// Call the update method.
 			Tic();
-			sparse_mma->Update(x.data(), df.data(), g.data(), dg.toDense().data(), xmin.data(), xmax.data());
+			sparse_mma->Update(x, df, g, dg.toDense(), xmin, xmax);
 			Toc("sparse_mma->Update time");
 
 			// Compute infnorm on design change.

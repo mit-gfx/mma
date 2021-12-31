@@ -65,8 +65,8 @@ class SparseMMASolver {
 
 	void ConstraintModification(bool conMod) {}
 
-	void Update(real *xval, const real *dfdx, const real *gx, const real *dgdx, const real *xmin,
-	            const real *xmax);
+	void Update(VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx,
+	 	const MatrixXr& dgdx, const VectorXr& xmin, const VectorXr& xmax);
 
 	void Reset() { iter = 0; };
 
@@ -80,28 +80,29 @@ class SparseMMASolver {
 	const real move, albefa;
 	real asyminit, asymdec, asyminc;
 
-	std::vector<real> a, c, d;
-	std::vector<real> y;
+	VectorXr a, c, d;
+	VectorXr y;
 	real z;
 
-	std::vector<real> lam, mu, s;
-	std::vector<real> low, upp, alpha, beta, p0, q0, pij, qij, b, grad, hess;
+	VectorXr lam, mu, s;
+	VectorXr low, upp, alpha, beta, p0, q0, b, grad;
+	MatrixXr pij, qij, hess;
 
-	std::vector<real> xold1, xold2;
+	VectorXr xold1, xold2;
 
-	void GenSub(const real *xval, const real *dfdx, const real *gx, const real *dgdx, const real *xmin,
-	            const real *xmax);
+	void GenSub(const VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx, const MatrixXr& dgdx,
+		const VectorXr& xmin, const VectorXr& xmax);
 
-	void SolveDSA(real *x);
-	void SolveDIP(real *x);
+	void SolveDSA(VectorXr& x);
+	void SolveDIP(VectorXr& x);
 
-	void XYZofLAMBDA(real *x);
+	void XYZofLAMBDA(VectorXr& x);
 
-	void DualGrad(real *x);
-	void DualHess(real *x);
+	void DualGrad(VectorXr& x);
+	void DualHess(VectorXr& x);
 	void DualLineSearch();
-	real DualResidual(real *x, real epsi);
+	real DualResidual(VectorXr& x, real epsi);
 
-	static void Factorize(real *K, int n);
-	static void Solve(real *K, real *x, int n);
+	static void Factorize(MatrixXr& K, int n);
+	static void Solve(MatrixXr& K, VectorXr& x, int n);
 };
