@@ -54,53 +54,54 @@
 #pragma once
 
 #include <vector>
+#include "common.h"
 
 class SparseMMASolver {
 
   public:
-	SparseMMASolver(int n, int m, double a = 0.0, double c = 1000.0, double d = 0.0);
+	SparseMMASolver(int n, int m, real a = 0.0, real c = 1000.0, real d = 0.0);
 
-	void SetAsymptotes(double init, double decrease, double increase);
+	void SetAsymptotes(real init, real decrease, real increase);
 
 	void ConstraintModification(bool conMod) {}
 
-	void Update(double *xval, const double *dfdx, const double *gx, const double *dgdx, const double *xmin,
-	            const double *xmax);
+	void Update(real *xval, const real *dfdx, const real *gx, const real *dgdx, const real *xmin,
+	            const real *xmax);
 
 	void Reset() { iter = 0; };
 
   private:
 	int n, m, iter;
 
-	const double xmamieps;
-	const double epsimin;
+	const real xmamieps;
+	const real epsimin;
 
-	const double raa0;
-	const double move, albefa;
-	double asyminit, asymdec, asyminc;
+	const real raa0;
+	const real move, albefa;
+	real asyminit, asymdec, asyminc;
 
-	std::vector<double> a, c, d;
-	std::vector<double> y;
-	double z;
+	std::vector<real> a, c, d;
+	std::vector<real> y;
+	real z;
 
-	std::vector<double> lam, mu, s;
-	std::vector<double> low, upp, alpha, beta, p0, q0, pij, qij, b, grad, hess;
+	std::vector<real> lam, mu, s;
+	std::vector<real> low, upp, alpha, beta, p0, q0, pij, qij, b, grad, hess;
 
-	std::vector<double> xold1, xold2;
+	std::vector<real> xold1, xold2;
 
-	void GenSub(const double *xval, const double *dfdx, const double *gx, const double *dgdx, const double *xmin,
-	            const double *xmax);
+	void GenSub(const real *xval, const real *dfdx, const real *gx, const real *dgdx, const real *xmin,
+	            const real *xmax);
 
-	void SolveDSA(double *x);
-	void SolveDIP(double *x);
+	void SolveDSA(real *x);
+	void SolveDIP(real *x);
 
-	void XYZofLAMBDA(double *x);
+	void XYZofLAMBDA(real *x);
 
-	void DualGrad(double *x);
-	void DualHess(double *x);
+	void DualGrad(real *x);
+	void DualHess(real *x);
 	void DualLineSearch();
-	double DualResidual(double *x, double epsi);
+	real DualResidual(real *x, real epsi);
 
-	static void Factorize(double *K, int n);
-	static void Solve(double *K, double *x, int n);
+	static void Factorize(real *K, int n);
+	static void Solve(real *K, real *x, int n);
 };

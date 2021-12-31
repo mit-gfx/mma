@@ -30,7 +30,7 @@
 // PUBLIC
 ////////////////////////////////////////////////////////////////////////////////
 
-SparseMMASolver::SparseMMASolver(int nn, int mm, double ai, double ci, double di)
+SparseMMASolver::SparseMMASolver(int nn, int mm, real ai, real ci, real di)
 	: n(nn)
 	, m(mm)
 	, iter(0)
@@ -63,7 +63,7 @@ SparseMMASolver::SparseMMASolver(int nn, int mm, double ai, double ci, double di
 	, xold2(n)
 { }
 
-void SparseMMASolver::SetAsymptotes(double init, double decrease, double increase) {
+void SparseMMASolver::SetAsymptotes(real init, real decrease, real increase) {
 
 	// asymptotes initialization and increase/decrease
 	asyminit = init;
@@ -71,8 +71,8 @@ void SparseMMASolver::SetAsymptotes(double init, double decrease, double increas
 	asyminc = increase;
 }
 
-void SparseMMASolver::Update(double *xval, const double *dfdx, const double *gx, const double *dgdx,
-	const double *xmin, const double *xmax)
+void SparseMMASolver::Update(real *xval, const real *dfdx, const real *gx, const real *dgdx,
+	const real *xmin, const real *xmax)
 {
 	// Generate the subproblem
 	GenSub(xval, dfdx, gx, dgdx, xmin, xmax);
@@ -92,16 +92,16 @@ void SparseMMASolver::Update(double *xval, const double *dfdx, const double *gx,
 // PRIVATE
 ////////////////////////////////////////////////////////////////////////////////
 
-void SparseMMASolver::SolveDIP(double *x) {
+void SparseMMASolver::SolveDIP(real *x) {
 
 	for (int j = 0; j < m; j++) {
 		lam[j] = c[j] / 2.0;
 		mu[j] = 1.0;
 	}
 
-	const double tol = epsimin; // 1.0e-9*sqrt(m+n);
-	double epsi = 1.0;
-	double err = 1.0;
+	const real tol = epsimin; // 1.0e-9*sqrt(m+n);
+	real epsi = 1.0;
+	real err = 1.0;
 	int loop;
 
 	while (epsi > tol) {
@@ -146,21 +146,21 @@ void SparseMMASolver::SolveDIP(double *x) {
 	}
 }
 
-void SparseMMASolver::SolveDSA(double *x) {
+void SparseMMASolver::SolveDSA(real *x) {
 
 	for (int j = 0; j < m; j++) {
 		lam[j] = 1.0;
 	}
 
-	const double tol = epsimin; // 1.0e-9*sqrt(m+n);
-	double err = 1.0;
+	const real tol = epsimin; // 1.0e-9*sqrt(m+n);
+	real err = 1.0;
 	int loop = 0;
 
 	while (err > tol && loop < 500) {
 		loop++;
 		XYZofLAMBDA(x);
 		DualGrad(x);
-		double theta = 1.0;
+		real theta = 1.0;
 		err = 0.0;
 		for (int j = 0; j < m; j++) {
 			lam[j] = std::max(0.0, lam[j] + theta * grad[j]);
@@ -170,9 +170,9 @@ void SparseMMASolver::SolveDSA(double *x) {
 	}
 }
 
-double SparseMMASolver::DualResidual(double *x, double epsi) {
+real SparseMMASolver::DualResidual(real *x, real epsi) {
 
-	double *res = new double[2 * m];
+	real *res = new real[2 * m];
 
 	for (int j = 0; j < m; j++) {
 		res[j] = -b[j] - a[j] * z - y[j] + mu[j];
@@ -182,7 +182,7 @@ double SparseMMASolver::DualResidual(double *x, double epsi) {
 		}
 	}
 
-	double nrI = 0.0;
+	real nrI = 0.0;
 	for (int i = 0; i < 2 * m; i++) {
 		if (nrI < std::abs(res[i])) {
 			nrI = std::abs(res[i]);
@@ -196,7 +196,7 @@ double SparseMMASolver::DualResidual(double *x, double epsi) {
 
 void SparseMMASolver::DualLineSearch() {
 
-	double theta = 1.005;
+	real theta = 1.005;
 	for (int i = 0; i < m; i++) {
 		if (theta < -1.01 * s[i] / lam[i]) {
 			theta = -1.01 * s[i] / lam[i];
@@ -213,23 +213,23 @@ void SparseMMASolver::DualLineSearch() {
 	}
 }
 
-void SparseMMASolver::DualHess(double *x) {
+void SparseMMASolver::DualHess(real *x) {
 
-	double *df2 = new double[n];
-	double *PQ = new double[n * m];
+	real *df2 = new real[n];
+	real *PQ = new real[n * m];
 	#ifdef MMA_WITH_OPENMP
 	#pragma omp parallel for
 	#endif
 	for (int i = 0; i < n; i++) {
-		double pjlam = p0[i];
-		double qjlam = q0[i];
+		real pjlam = p0[i];
+		real qjlam = q0[i];
 		for (int j = 0; j < m; j++) {
 			pjlam += pij[i * m + j] * lam[j];
 			qjlam += qij[i * m + j] * lam[j];
 			PQ[i * m + j] = pij[i * m + j] / pow(upp[i] - x[i], 2.0) - qij[i * m + j] / pow(x[i] - low[i], 2.0);
 		}
 		df2[i] = -1.0 / (2.0 * pjlam / pow(upp[i] - x[i], 3.0) + 2.0 * qjlam / pow(x[i] - low[i], 3.0));
-		double xp = (sqrt(pjlam) * low[i] + sqrt(qjlam) * upp[i]) / (sqrt(pjlam) + sqrt(qjlam));
+		real xp = (sqrt(pjlam) * low[i] + sqrt(qjlam) * upp[i]) / (sqrt(pjlam) + sqrt(qjlam));
 		if (xp < alpha[i]) {
 			df2[i] = 0.0;
 		}
@@ -239,7 +239,7 @@ void SparseMMASolver::DualHess(double *x) {
 	}
 
 	// Create the matrix/matrix/matrix product: PQ^T * diag(df2) * PQ
-	double *tmp = new double[n * m];
+	real *tmp = new real[n * m];
 	for (int j = 0; j < m; j++) {
 		#ifdef MMA_WITH_OPENMP
 		#pragma omp parallel for
@@ -259,7 +259,7 @@ void SparseMMASolver::DualHess(double *x) {
 		}
 	}
 
-	double lamai = 0.0;
+	real lamai = 0.0;
 	for (int j = 0; j < m; j++) {
 		if (lam[j] < 0.0) {
 			lam[j] = 0.0;
@@ -280,11 +280,11 @@ void SparseMMASolver::DualHess(double *x) {
 	}
 
 	// pos def check
-	double HessTrace = 0.0;
+	real HessTrace = 0.0;
 	for (int i = 0; i < m; i++) {
 		HessTrace += hess[i * m + i];
 	}
-	double HessCorr = 1e-4 * HessTrace / m;
+	real HessCorr = 1e-4 * HessTrace / m;
 
 	if (-1.0 * HessCorr < 1.0e-7) {
 		HessCorr = -1.0e-7;
@@ -299,7 +299,7 @@ void SparseMMASolver::DualHess(double *x) {
 	delete[] tmp;
 }
 
-void SparseMMASolver::DualGrad(double *x) {
+void SparseMMASolver::DualGrad(real *x) {
 	for (int j = 0; j < m; j++) {
 		grad[j] = -b[j] - a[j] * z - y[j];
 		for (int i = 0; i < n; i++) {
@@ -308,9 +308,9 @@ void SparseMMASolver::DualGrad(double *x) {
 	}
 }
 
-void SparseMMASolver::XYZofLAMBDA(double *x) {
+void SparseMMASolver::XYZofLAMBDA(real *x) {
 
-	double lamai = 0.0;
+	real lamai = 0.0;
 	for (int i = 0; i < m; i++) {
 		if (lam[i] < 0.0) {
 			lam[i] = 0;
@@ -324,8 +324,8 @@ void SparseMMASolver::XYZofLAMBDA(double *x) {
 	#pragma omp parallel for
 	#endif
 	for (int i = 0; i < n; i++) {
-		double pjlam = p0[i];
-		double qjlam = q0[i];
+		real pjlam = p0[i];
+		real qjlam = q0[i];
 		for (int j = 0; j < m; j++) {
 			pjlam += pij[i * m + j] * lam[j];
 			qjlam += qij[i * m + j] * lam[j];
@@ -340,8 +340,8 @@ void SparseMMASolver::XYZofLAMBDA(double *x) {
 	}
 }
 
-void SparseMMASolver::GenSub(const double *xval, const double *dfdx, const double *gx, const double *dgdx, const double *xmin,
-                       const double *xmax)
+void SparseMMASolver::GenSub(const real *xval, const real *dfdx, const real *gx, const real *dgdx, const real *xmin,
+                       const real *xmax)
 {
 	// Forward the iterator
 	iter++;
@@ -360,8 +360,8 @@ void SparseMMASolver::GenSub(const double *xval, const double *dfdx, const doubl
 		#pragma omp parallel for
 		#endif
 		for (int i = 0; i < n; i++) {
-			double zzz = (xval[i] - xold1[i]) * (xold1[i] - xold2[i]);
-			double gamma;
+			real zzz = (xval[i] - xold1[i]) * (xold1[i] - xold2[i]);
+			real gamma;
 			if (zzz < 0.0) {
 				gamma = asymdec;
 			} else if (zzz > 0.0) {
@@ -372,15 +372,15 @@ void SparseMMASolver::GenSub(const double *xval, const double *dfdx, const doubl
 			low[i] = xval[i] - gamma * (xold1[i] - low[i]);
 			upp[i] = xval[i] + gamma * (upp[i] - xold1[i]);
 
-			double xmami = std::max(xmamieps, xmax[i] - xmin[i]);
-			// double xmami = xmax[i] - xmin[i];
+			real xmami = std::max(xmamieps, xmax[i] - xmin[i]);
+			// real xmami = xmax[i] - xmin[i];
 			low[i] = std::max(low[i], xval[i] - 100.0 * xmami);
 			low[i] = std::min(low[i], xval[i] - 1.0e-5 * xmami);
 			upp[i] = std::max(upp[i], xval[i] + 1.0e-5 * xmami);
 			upp[i] = std::min(upp[i], xval[i] + 100.0 * xmami);
 
-			double xmi = xmin[i] - 1.0e-6;
-			double xma = xmax[i] + 1.0e-6;
+			real xmi = xmin[i] - 1.0e-6;
+			real xma = xmax[i] + 1.0e-6;
 			if (xval[i] < xmi) {
 				low[i] = xval[i] - (xma - xval[i]) / 0.9;
 				upp[i] = xval[i] + (xma - xval[i]) / 0.9;
@@ -393,7 +393,7 @@ void SparseMMASolver::GenSub(const double *xval, const double *dfdx, const doubl
 	}
 
 	// Set bounds and the coefficients for the approximation
-	// double raa0 = 0.5*1e-6;
+	// real raa0 = 0.5*1e-6;
 	#ifdef MMA_WITH_OPENMP
 	#pragma omp parallel for
 	#endif
@@ -408,20 +408,20 @@ void SparseMMASolver::GenSub(const double *xval, const double *dfdx, const doubl
 
 		// Objective function
 		{
-			double dfdxp = std::max(0.0, dfdx[i]);
-			double dfdxm = std::max(0.0, -1.0 * dfdx[i]);
-			double xmamiinv = 1.0 / std::max(xmamieps, xmax[i] - xmin[i]);
-			double pq = 0.001 * std::abs(dfdx[i]) + raa0 * xmamiinv;
+			real dfdxp = std::max(0.0, dfdx[i]);
+			real dfdxm = std::max(0.0, -1.0 * dfdx[i]);
+			real xmamiinv = 1.0 / std::max(xmamieps, xmax[i] - xmin[i]);
+			real pq = 0.001 * std::abs(dfdx[i]) + raa0 * xmamiinv;
 			p0[i] = std::pow(upp[i] - xval[i], 2.0) * (dfdxp + pq);
 			q0[i] = std::pow(xval[i] - low[i], 2.0) * (dfdxm + pq);
 		}
 
 		// Constraints
 		for (int j = 0; j < m; j++) {
-			double dgdxp = std::max(0.0, dgdx[i * m + j]);
-			double dgdxm = std::max(0.0, -1.0 * dgdx[i * m + j]);
-			double xmamiinv = 1.0 / std::max(xmamieps, xmax[i] - xmin[i]);
-			double pq = 0.001 * std::abs(dgdx[i * m + j]) + raa0 * xmamiinv;
+			real dgdxp = std::max(0.0, dgdx[i * m + j]);
+			real dgdxm = std::max(0.0, -1.0 * dgdx[i * m + j]);
+			real xmamiinv = 1.0 / std::max(xmamieps, xmax[i] - xmin[i]);
+			real pq = 0.001 * std::abs(dgdx[i * m + j]) + raa0 * xmamiinv;
 			pij[i * m + j] = std::pow(upp[i] - xval[i], 2.0) * (dgdxp + pq);
 			qij[i * m + j] = std::pow(xval[i] - low[i], 2.0) * (dgdxm + pq);
 		}
@@ -436,7 +436,7 @@ void SparseMMASolver::GenSub(const double *xval, const double *dfdx, const doubl
 	}
 }
 
-void SparseMMASolver::Factorize(double *K, int n) {
+void SparseMMASolver::Factorize(real *K, int n) {
 
 	for (int s = 0; s < n - 1; s++) {
 		for (int i = s + 1; i < n; i++) {
@@ -448,10 +448,10 @@ void SparseMMASolver::Factorize(double *K, int n) {
 	}
 }
 
-void SparseMMASolver::Solve(double *K, double *x, int n) {
+void SparseMMASolver::Solve(real *K, real *x, int n) {
 
 	for (int i = 1; i < n; i++) {
-		double a = 0.0;
+		real a = 0.0;
 		for (int j = 0; j < i; j++) {
 			a = a - K[i * n + j] * x[j];
 		}
@@ -460,7 +460,7 @@ void SparseMMASolver::Solve(double *K, double *x, int n) {
 
 	x[n - 1] = x[n - 1] / K[(n - 1) * n + (n - 1)];
 	for (int i = n - 2; i >= 0; i--) {
-		double a = x[i];
+		real a = x[i];
 		for (int j = i + 1; j < n; j++) {
 			a = a - K[i * n + j] * x[j];
 		}
