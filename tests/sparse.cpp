@@ -1,6 +1,7 @@
 #include "Eigen/Sparse"
 #include "Eigen/Dense"
 #include "mma/MMASolver.h"
+#include "sparse_mma/SparseMMASolver.h"
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -156,41 +157,82 @@ int main(int argc, char *argv[]) {
 	const VectorXr rand_zero_one = (VectorXr::Random(n).array() + 1) / 2;
 	const VectorXr x0 = prob.lb + rand_zero_one.cwiseProduct(prob.ub - prob.lb);
 
-	// MMA.
-	std::shared_ptr<MMASolver> mma = std::make_shared<MMASolver>(n, m);
-	real movlim = 0.2;
-	VectorXr x = x0;
-	VectorXr xold = x0;
-	VectorXr xmin = prob.lb;
-	VectorXr xmax = prob.ub;
+	// SparseMMA.
+	{
+		std::cout << GreenHead() << "Running SparseMMA..." << GreenTail() << std::endl;
+		std::shared_ptr<SparseMMASolver> sparse_mma = std::make_shared<SparseMMASolver>(n, m);
+		real movlim = 0.2;
+		VectorXr x = x0;
+		VectorXr xold = x0;
+		VectorXr xmin = prob.lb;
+		VectorXr xmax = prob.ub;
 
-	real ch = 1.0;
-	int itr = 0;
-	while (ch > 0.002 && itr < 100) {
-		itr++;
+		real ch = 1.0;
+		int itr = 0;
+		while (ch > 0.002 && itr < 100) {
+			itr++;
 
-		VectorXr df;
-		const real f = ComputeObjective(prob, x, df);
-		VectorXr g;
-		SparseMatrix dg;
-		ComputeConstraints(prob, x, g, dg);
+			VectorXr df;
+			const real f = ComputeObjective(prob, x, df);
+			VectorXr g;
+			SparseMatrix dg;
+			ComputeConstraints(prob, x, g, dg);
 
-		// Set outer move limits.
-		xmax = prob.ub.cwiseMin(VectorXr(x.array() + movlim));
-		xmin = prob.lb.cwiseMax(VectorXr(x.array() - movlim));
+			// Set outer move limits.
+			xmax = prob.ub.cwiseMin(VectorXr(x.array() + movlim));
+			xmin = prob.lb.cwiseMax(VectorXr(x.array() - movlim));
 
-		// Call the update method.
-		Tic();
-		mma->Update(x.data(), df.data(), g.data(), dg.toDense().data(), xmin.data(), xmax.data());
-		Toc("mma->Update time");
+			// Call the update method.
+			Tic();
+			sparse_mma->Update(x.data(), df.data(), g.data(), dg.toDense().data(), xmin.data(), xmax.data());
+			Toc("sparse_mma->Update time");
 
-		// Compute infnorm on design change.
-		ch = (x - xold).cwiseAbs().maxCoeff();
-		xold = x;
+			// Compute infnorm on design change.
+			ch = (x - xold).cwiseAbs().maxCoeff();
+			xold = x;
 
-		// Print to screen
-		printf("it.: %d, obj.: %f, ch.: %f \n",itr, f, ch);
+			// Print to screen
+			printf("it.: %d, obj.: %f, ch.: %f \n",itr, f, ch);
+		}
 	}
 
+	// MMA.
+	{
+		std::cout << GreenHead() << "Running MMA..." << GreenTail() << std::endl;
+		std::shared_ptr<MMASolver> mma = std::make_shared<MMASolver>(n, m);
+		real movlim = 0.2;
+		VectorXr x = x0;
+		VectorXr xold = x0;
+		VectorXr xmin = prob.lb;
+		VectorXr xmax = prob.ub;
+
+		real ch = 1.0;
+		int itr = 0;
+		while (ch > 0.002 && itr < 100) {
+			itr++;
+
+			VectorXr df;
+			const real f = ComputeObjective(prob, x, df);
+			VectorXr g;
+			SparseMatrix dg;
+			ComputeConstraints(prob, x, g, dg);
+
+			// Set outer move limits.
+			xmax = prob.ub.cwiseMin(VectorXr(x.array() + movlim));
+			xmin = prob.lb.cwiseMax(VectorXr(x.array() - movlim));
+
+			// Call the update method.
+			Tic();
+			mma->Update(x.data(), df.data(), g.data(), dg.toDense().data(), xmin.data(), xmax.data());
+			Toc("mma->Update time");
+
+			// Compute infnorm on design change.
+			ch = (x - xold).cwiseAbs().maxCoeff();
+			xold = x;
+
+			// Print to screen
+			printf("it.: %d, obj.: %f, ch.: %f \n",itr, f, ch);
+		}
+	}
 	return 0;
 }

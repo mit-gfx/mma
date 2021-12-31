@@ -55,10 +55,10 @@
 
 #include <vector>
 
-class MMASolver {
+class SparseMMASolver {
 
   public:
-	MMASolver(int n, int m, double a = 0.0, double c = 1000.0, double d = 0.0);
+	SparseMMASolver(int n, int m, double a = 0.0, double c = 1000.0, double d = 0.0);
 
 	void SetAsymptotes(double init, double decrease, double increase);
 
