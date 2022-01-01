@@ -296,9 +296,9 @@ void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const V
 		for (int j = 0; j < m; j++) {
 			real dgdxp = std::max(0.0, dgdx(j, i));
 			real dgdxm = std::max(0.0, -1.0 * dgdx(j, i));
-			real pq = 0.001 * std::abs(dgdx(j, i)) + raa0 * xmamiinv(i);
-			pij(i, j) = std::pow(upp(i) - xval(i), 2.0) * (dgdxp + pq);
-			qij(i, j) = std::pow(xval(i) - low(i), 2.0) * (dgdxm + pq);
+			real pq_ij = 0.001 * std::abs(dgdx(j, i)) + raa0 * xmamiinv(i);
+			pij(i, j) = std::pow(upp(i) - xval(i), 2.0) * (dgdxp + pq_ij);
+			qij(i, j) = std::pow(xval(i) - low(i), 2.0) * (dgdxm + pq_ij);
 		}
 	}
 
