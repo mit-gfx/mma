@@ -85,6 +85,10 @@ int main(int argc, char *argv[]) {
 	const VectorXr x0 = prob.lb + rand_zero_one.cwiseProduct(prob.ub - prob.lb);
 
 	// SparseMMA.
+	VectorXr sparse_mma_solution;
+	VectorXr mma_solution;
+	real sparse_mma_loss;
+	real mma_loss;
 	{
 		std::cout << GreenHead() << "Running SparseMMA..." << GreenTail() << std::endl;
 		std::shared_ptr<SparseMMASolver> sparse_mma = std::make_shared<SparseMMASolver>(n, m);
@@ -101,6 +105,8 @@ int main(int argc, char *argv[]) {
 
 			VectorXr df;
 			const real f = ComputeObjective(prob, x, df);
+			sparse_mma_loss = f;
+			sparse_mma_solution = x;
 			VectorXr g;
 			SparseMatrix dg;
 			ComputeConstraints(prob, x, g, dg);
@@ -140,6 +146,8 @@ int main(int argc, char *argv[]) {
 
 			VectorXr df;
 			const real f = ComputeObjective(prob, x, df);
+			mma_loss = f;
+			mma_solution = x;
 			VectorXr g;
 			SparseMatrix dg;
 			ComputeConstraints(prob, x, g, dg);
@@ -161,5 +169,9 @@ int main(int argc, char *argv[]) {
 			printf("it.: %d, obj.: %f, ch.: %f \n",itr, f, ch);
 		}
 	}
+
+	std::cout << CyanHead() << "Loss diff: " << std::abs(sparse_mma_loss - mma_loss) << CyanTail() << std::endl;
+	std::cout << CyanHead() << "Sol diff: " << (sparse_mma_solution - mma_solution).cwiseAbs().maxCoeff() << CyanTail() << std::endl;
+
 	return 0;
 }

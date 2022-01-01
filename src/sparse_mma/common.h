@@ -24,6 +24,7 @@ using real = double;
 using SparseMatrix = Eigen::SparseMatrix<real>;
 using MatrixXr = Eigen::Matrix<real, -1, -1>;
 using VectorXr = Eigen::Matrix<real, -1, 1>;
+using RowVectorXr = Eigen::Matrix<real, 1, -1>;
 
 const std::string GreenHead();
 const std::string RedHead();

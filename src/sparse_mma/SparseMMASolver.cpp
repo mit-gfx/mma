@@ -96,10 +96,8 @@ void SparseMMASolver::Update(VectorXr& xval, const VectorXr& dfdx, const VectorX
 
 void SparseMMASolver::SolveDIP(VectorXr& x) {
 
-	for (int j = 0; j < m; j++) {
-		lam[j] = c[j] / 2.0;
-		mu[j] = 1.0;
-	}
+	lam = c / 2.0;
+	mu.setConstant(1);
 
 	const real tol = epsimin; // 1.0e-9*sqrt(m+n);
 	real epsi = 1.0;
@@ -115,26 +113,28 @@ void SparseMMASolver::SolveDIP(VectorXr& x) {
 			// Set up Newton system
 			XYZofLAMBDA(x);
 			DualGrad(x);
-			for (int j = 0; j < m; j++) {
-				grad[j] = -1.0 * grad[j] - epsi / lam[j];
-			}
+			grad = -grad - lam.cwiseInverse() * epsi;
 			DualHess(x);
 
 			// Solve Newton system
 			if (m > 1) {
+				// s.head(m) = H^-1 * g.
+				/*
+				const MatrixXr H = hess;
+				const VectorXr g = grad;
 				Factorize(hess, m);
 				Solve(hess, grad, m);
-				for (int j = 0; j < m; j++) {
-					s[j] = grad[j];
-				}
+				std::cout << "rel err of H * grad - g" << (H * grad - g).cwiseAbs().maxCoeff() / g.cwiseAbs().maxCoeff() << std::endl;
+				// The outputs are very small.
+				*/
+				grad = hess.colPivHouseholderQr().solve(grad);
+				s.head(m) = grad;
 			} else if (m > 0) {
 				s[0] = grad[0] / hess(0, 0);
 			}
 
 			// Get the full search direction
-			for (int i = 0; i < m; i++) {
-				s[m + i] = -mu[i] + epsi / lam[i] - s[i] * mu[i] / lam[i];
-			}
+			s.tail(m) = -mu + lam.cwiseInverse() * epsi - s.head(m).cwiseProduct(mu).cwiseQuotient(lam);
 
 			// Perform linesearch and update lam and mu
 			DualLineSearch();
@@ -149,10 +149,7 @@ void SparseMMASolver::SolveDIP(VectorXr& x) {
 }
 
 void SparseMMASolver::SolveDSA(VectorXr& x) {
-
-	for (int j = 0; j < m; j++) {
-		lam[j] = 1.0;
-	}
+	lam.setConstant(1);
 
 	const real tol = epsimin; // 1.0e-9*sqrt(m+n);
 	real err = 1.0;
@@ -163,59 +160,36 @@ void SparseMMASolver::SolveDSA(VectorXr& x) {
 		XYZofLAMBDA(x);
 		DualGrad(x);
 		real theta = 1.0;
-		err = 0.0;
-		for (int j = 0; j < m; j++) {
-			lam[j] = std::max(0.0, lam[j] + theta * grad[j]);
-			err += grad[j] * grad[j];
-		}
-		err = std::sqrt(err);
+		lam = (lam + theta * grad).cwiseMax(0);
+		err = grad.norm();
 	}
 }
 
 real SparseMMASolver::DualResidual(VectorXr& x, real epsi) {
 
-	real *res = new real[2 * m];
+	VectorXr res(2 * m);
+	res.head(m) = -b - a * z - y + mu;
+	const RowVectorXr inv_upp_x = (upp - x).cwiseInverse();
+	const RowVectorXr inv_x_low = (x - low).cwiseInverse();
+	res.head(m) += inv_upp_x * pij + inv_x_low * qij;
+	res.tail(m) = mu.cwiseProduct(lam).array() - epsi;
 
-	for (int j = 0; j < m; j++) {
-		res[j] = -b[j] - a[j] * z - y[j] + mu[j];
-		res[j + m] = mu[j] * lam[j] - epsi;
-		for (int i = 0; i < n; i++) {
-			res[j] += pij(i, j) / (upp[i] - x[i]) + qij(i, j) / (x[i] - low[i]);
-		}
-	}
-
-	real nrI = 0.0;
-	for (int i = 0; i < 2 * m; i++) {
-		if (nrI < std::abs(res[i])) {
-			nrI = std::abs(res[i]);
-		}
-	}
-
-	delete[] res;
-
-	return nrI;
+	return res.cwiseAbs().maxCoeff();
 }
 
 void SparseMMASolver::DualLineSearch() {
 
 	real theta = 1.005;
-	for (int i = 0; i < m; i++) {
-		if (theta < -1.01 * s[i] / lam[i]) {
-			theta = -1.01 * s[i] / lam[i];
-		}
-		if (theta < -1.01 * s[i + m] / mu[i]) {
-			theta = -1.01 * s[i + m] / mu[i];
-		}
-	}
+	theta = std::max(std::max(theta, (-1.01 * s.head(m).cwiseQuotient(lam)).maxCoeff()),
+		(-1.01 * s.tail(m).cwiseQuotient(mu)).maxCoeff());
 	theta = 1.0 / theta;
 
-	for (int i = 0; i < m; i++) {
-		lam[i] = lam[i] + theta * s[i];
-		mu[i] = mu[i] + theta * s[i + m];
-	}
+	lam += theta * s.head(m);
+	mu += theta * s.tail(m);
 }
 
 void SparseMMASolver::DualHess(VectorXr& x) {
+	// TODO.
 
 	real *df2 = new real[n];
 	real *PQ = new real[n * m];
@@ -302,44 +276,25 @@ void SparseMMASolver::DualHess(VectorXr& x) {
 }
 
 void SparseMMASolver::DualGrad(VectorXr& x) {
-	for (int j = 0; j < m; j++) {
-		grad[j] = -b[j] - a[j] * z - y[j];
-		for (int i = 0; i < n; i++) {
-			grad[j] += pij(i, j) / (upp[i] - x[i]) + qij(i, j) / (x[i] - low[i]);
-		}
-	}
+	grad = -b - a * z - y;
+	const RowVectorXr inv_upp_x = (upp - x).cwiseInverse();
+	const RowVectorXr inv_x_low = (x - low).cwiseInverse();
+	grad += inv_upp_x * pij + inv_x_low * qij;
 }
 
 void SparseMMASolver::XYZofLAMBDA(VectorXr& x) {
-
-	real lamai = 0.0;
-	for (int i = 0; i < m; i++) {
-		if (lam[i] < 0.0) {
-			lam[i] = 0;
-		}
-		y[i] = std::max(0.0, lam[i] - c[i]); // Note y=(lam-c)/d - however d is fixed at one !!
-		lamai += lam[i] * a[i];
-	}
+	lam = lam.cwiseMax(0);
+	y = (lam - c).cwiseMax(0);
+	const real lamai = lam.dot(a);
 	z = std::max(0.0, 10.0 * (lamai - 1.0)); // SINCE a0 = 1.0
 
-	#ifdef MMA_WITH_OPENMP
-	#pragma omp parallel for
-	#endif
-	for (int i = 0; i < n; i++) {
-		real pjlam = p0[i];
-		real qjlam = q0[i];
-		for (int j = 0; j < m; j++) {
-			pjlam += pij(i, j) * lam[j];
-			qjlam += qij(i, j) * lam[j];
-		}
-		x[i] = (sqrt(pjlam) * low[i] + sqrt(qjlam) * upp[i]) / (sqrt(pjlam) + sqrt(qjlam));
-		if (x[i] < alpha[i]) {
-			x[i] = alpha[i];
-		}
-		if (x[i] > beta[i]) {
-			x[i] = beta[i];
-		}
-	}
+	const VectorXr pjlam = p0 + pij * lam;
+	const VectorXr qjlam = q0 + qij * lam;
+	const VectorXr sqrt_pjlam = pjlam.cwiseSqrt();
+	const VectorXr sqrt_qjlam = qjlam.cwiseSqrt();
+	x = (sqrt_pjlam.cwiseProduct(low) + sqrt_qjlam.cwiseProduct(upp)).cwiseQuotient(sqrt_pjlam + sqrt_qjlam);
+	x = x.cwiseMax(alpha);
+	x = x.cwiseMin(beta);
 }
 
 void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx, const MatrixXr& dgdx,
@@ -350,96 +305,62 @@ void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const V
 
 	// Set asymptotes
 	if (iter < 3) {
-		#ifdef MMA_WITH_OPENMP
-		#pragma omp parallel for
-		#endif
-		for (int i = 0; i < n; i++) {
-			low[i] = xval[i] - asyminit * (xmax[i] - xmin[i]);
-			upp[i] = xval[i] + asyminit * (xmax[i] - xmin[i]);
-		}
+		low = xval - asyminit * (xmax - xmin);
+		upp = xval + asyminit * (xmax - xmin);
 	} else {
-		#ifdef MMA_WITH_OPENMP
-		#pragma omp parallel for
-		#endif
-		for (int i = 0; i < n; i++) {
-			real zzz = (xval[i] - xold1[i]) * (xold1[i] - xold2[i]);
-			real gamma;
-			if (zzz < 0.0) {
-				gamma = asymdec;
-			} else if (zzz > 0.0) {
-				gamma = asyminc;
-			} else {
-				gamma = 1.0;
-			}
-			low[i] = xval[i] - gamma * (xold1[i] - low[i]);
-			upp[i] = xval[i] + gamma * (upp[i] - xold1[i]);
-
-			real xmami = std::max(xmamieps, xmax[i] - xmin[i]);
-			// real xmami = xmax[i] - xmin[i];
-			low[i] = std::max(low[i], xval[i] - 100.0 * xmami);
-			low[i] = std::min(low[i], xval[i] - 1.0e-5 * xmami);
-			upp[i] = std::max(upp[i], xval[i] + 1.0e-5 * xmami);
-			upp[i] = std::min(upp[i], xval[i] + 100.0 * xmami);
-
-			real xmi = xmin[i] - 1.0e-6;
-			real xma = xmax[i] + 1.0e-6;
-			if (xval[i] < xmi) {
-				low[i] = xval[i] - (xma - xval[i]) / 0.9;
-				upp[i] = xval[i] + (xma - xval[i]) / 0.9;
-			}
-			if (xval[i] > xma) {
-				low[i] = xval[i] - (xval[i] - xmi) / 0.9;
-				upp[i] = xval[i] + (xval[i] - xmi) / 0.9;
-			}
-		}
+		const VectorXr zzz = (xval - xold1).cwiseProduct(xold1 - xold2);
+		const VectorXr gamma = (zzz.array() < 0).select(asymdec,
+			(zzz.array() > 0).select(asyminc, VectorXr::Ones(n)));
+		low = xval - gamma.cwiseProduct(xold1 - low);
+		upp = xval + gamma.cwiseProduct(upp - xold1);
+		const VectorXr xmami = (xmax - xmin).cwiseMax(xmamieps);
+		low = low.cwiseMax(xval - 100.0 * xmami);
+		low = low.cwiseMin(xval - 1.0e-5 * xmami);
+		upp = upp.cwiseMax(xval + 1.0e-5 * xmami);
+		upp = upp.cwiseMin(xval + 100.0 * xmami);
+		const VectorXr xmi = xmin.array() - 1.0e-6;
+		const VectorXr xma = xmax.array() + 1.0e-6;
+		low = (xval.array() < xmi.array()).select(xval - (xma - xval) / 0.9, low);
+		upp = (xval.array() < xmi.array()).select(xval + (xma - xval) / 0.9, upp);
+		low = (xval.array() > xma.array()).select(xval - (xval - xmi) / 0.9, low);
+		upp = (xval.array() > xma.array()).select(xval + (xval - xmi) / 0.9, upp);
 	}
 
 	// Set bounds and the coefficients for the approximation
 	// real raa0 = 0.5*1e-6;
-	#ifdef MMA_WITH_OPENMP
-	#pragma omp parallel for
-	#endif
+	alpha = xmin.cwiseMax(low + albefa * (xval - low));
+	alpha = alpha.cwiseMax(xval - move * (xmax - xmin));
+	alpha = alpha.cwiseMin(xmax);
+	beta = xmax.cwiseMin(upp - albefa * (upp - xval));
+	beta = beta.cwiseMin(xval + move * (xmax - xmin));
+	beta = beta.cwiseMax(xmin);
+	// Objective function.
+	const VectorXr dfdxp = dfdx.cwiseMax(0);
+	const VectorXr dfdxm = (-1.0 * dfdx).cwiseMax(0);
+	const VectorXr xmamiinv = (xmax - xmin).cwiseMax(xmamieps).cwiseInverse();
+	const VectorXr pq = 0.001 * dfdx.cwiseAbs() + raa0 * xmamiinv;
+	p0 = (upp - xval).cwiseAbs2().cwiseProduct(dfdxp + pq);
+	q0 = (xval - low).cwiseAbs2().cwiseProduct(dfdxm + pq);
+	// Constraints.
 	for (int i = 0; i < n; ++i) {
-		// Compute bounds alpha and beta
-		alpha[i] = std::max(xmin[i], low[i] + albefa * (xval[i] - low[i]));
-		alpha[i] = std::max(alpha[i], xval[i] - move * (xmax[i] - xmin[i]));
-		alpha[i] = std::min(alpha[i], xmax[i]);
-		beta[i] = std::min(xmax[i], upp[i] - albefa * (upp[i] - xval[i]));
-		beta[i] = std::min(beta[i], xval[i] + move * (xmax[i] - xmin[i]));
-		beta[i] = std::max(beta[i], xmin[i]);
-
-		// Objective function
-		{
-			real dfdxp = std::max(0.0, dfdx[i]);
-			real dfdxm = std::max(0.0, -1.0 * dfdx[i]);
-			real xmamiinv = 1.0 / std::max(xmamieps, xmax[i] - xmin[i]);
-			real pq = 0.001 * std::abs(dfdx[i]) + raa0 * xmamiinv;
-			p0[i] = std::pow(upp[i] - xval[i], 2.0) * (dfdxp + pq);
-			q0[i] = std::pow(xval[i] - low[i], 2.0) * (dfdxm + pq);
-		}
-
-		// Constraints
 		for (int j = 0; j < m; j++) {
 			real dgdxp = std::max(0.0, dgdx(j, i));
 			real dgdxm = std::max(0.0, -1.0 * dgdx(j, i));
-			real xmamiinv = 1.0 / std::max(xmamieps, xmax[i] - xmin[i]);
-			real pq = 0.001 * std::abs(dgdx(j, i)) + raa0 * xmamiinv;
-			pij(i, j) = std::pow(upp[i] - xval[i], 2.0) * (dgdxp + pq);
-			qij(i, j) = std::pow(xval[i] - low[i], 2.0) * (dgdxm + pq);
+			real pq = 0.001 * std::abs(dgdx(j, i)) + raa0 * xmamiinv(i);
+			pij(i, j) = std::pow(upp(i) - xval(i), 2.0) * (dgdxp + pq);
+			qij(i, j) = std::pow(xval(i) - low(i), 2.0) * (dgdxm + pq);
 		}
 	}
 
 	// The constant for the constraints
-	for (int j = 0; j < m; j++) {
-		b[j] = -gx[j];
-		for (int i = 0; i < n; i++) {
-			b[j] += pij(i, j) / (upp[i] - xval[i]) + qij(i, j) / (xval[i] - low[i]);
-		}
-	}
+	b = -gx;
+	const RowVectorXr inv_upp_xval = (upp - xval).cwiseInverse();
+	const RowVectorXr inv_xval_low = (xval - low).cwiseInverse();
+	b += inv_upp_xval * pij + inv_xval_low * qij;
 }
 
+/*
 void SparseMMASolver::Factorize(MatrixXr& K, int n) {
-
 	for (int s = 0; s < n - 1; s++) {
 		for (int i = s + 1; i < n; i++) {
 			K(i, s) = K(i, s) / K(s, s);
@@ -451,7 +372,6 @@ void SparseMMASolver::Factorize(MatrixXr& K, int n) {
 }
 
 void SparseMMASolver::Solve(MatrixXr& K, VectorXr& x, int n) {
-
 	for (int i = 1; i < n; i++) {
 		real a = 0.0;
 		for (int j = 0; j < i; j++) {
@@ -469,3 +389,4 @@ void SparseMMASolver::Solve(MatrixXr& K, VectorXr& x, int n) {
 		x[i] = a / K(i, i);
 	}
 }
+*/
