@@ -66,7 +66,7 @@ class SparseMMASolver {
 	void ConstraintModification(bool conMod) {}
 
 	void Update(VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx,
-	 	const MatrixXr& dgdx, const VectorXr& xmin, const VectorXr& xmax);
+	 	const SparseMatrix& dgdx, const VectorXr& xmin, const VectorXr& xmax);
 
 	void Reset() { iter = 0; };
 
@@ -86,11 +86,13 @@ class SparseMMASolver {
 
 	VectorXr lam, mu, s;
 	VectorXr low, upp, alpha, beta, p0, q0, b, grad;
-	MatrixXr pij, qij, hess;
+	SparseMatrix pij, qij, hess;
 
 	VectorXr xold1, xold2;
 
-	void GenSub(const VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx, const MatrixXr& dgdx,
+	bool low_rank_hess;
+
+	void GenSub(const VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx, const SparseMatrix& dgdx,
 		const VectorXr& xmin, const VectorXr& xmax);
 
 	void SolveDSA(VectorXr& x);

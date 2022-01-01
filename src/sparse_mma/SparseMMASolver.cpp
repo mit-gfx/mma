@@ -62,6 +62,7 @@ SparseMMASolver::SparseMMASolver(int nn, int mm, real ai, real ci, real di)
 	, hess(m, m)
 	, xold1(n)
 	, xold2(n)
+	, low_rank_hess(false)
 { }
 
 void SparseMMASolver::SetAsymptotes(real init, real decrease, real increase) {
@@ -73,7 +74,7 @@ void SparseMMASolver::SetAsymptotes(real init, real decrease, real increase) {
 }
 
 void SparseMMASolver::Update(VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx,
-	const MatrixXr& dgdx, const VectorXr& xmin, const VectorXr& xmax)
+	const SparseMatrix& dgdx, const VectorXr& xmin, const VectorXr& xmax)
 {
 	// Generate the subproblem
 	GenSub(xval, dfdx, gx, dgdx, xmin, xmax);
@@ -127,10 +128,26 @@ void SparseMMASolver::SolveDIP(VectorXr& x) {
 				std::cout << "rel err of H * grad - g" << (H * grad - g).cwiseAbs().maxCoeff() / g.cwiseAbs().maxCoeff() << std::endl;
 				// The outputs are very small.
 				*/
-				grad = hess.colPivHouseholderQr().solve(grad);
+
+				// First, solve hess * tmp = grad;
+				Eigen::SparseLU<SparseMatrix> solver;
+				solver.compute(hess);
+				VectorXr tmp = solver.solve(grad);
+				if (low_rank_hess) {
+					// Additionally, if low_rank_hess is true, we need to use the Sherman–Morrison formula to solve the modified
+					// liner system:
+					// (hess - 10 * a * a.T) * tmp = grad.
+					const VectorXr u = a;
+					const VectorXr v = -10 * a;
+					// tmp = (hess + u * v.T)^(-1) * grad.
+					const VectorXr Ainv_u = solver.solve(u);
+					const real one_plus_vAinvu = 1 + v.dot(Ainv_u);
+					tmp = tmp - Ainv_u * v.dot(tmp) / one_plus_vAinvu;
+				}
+				grad = tmp;	// Don't know why the original code chooses to override grad, but let's keep it as is.
 				s.head(m) = grad;
 			} else if (m > 0) {
-				s[0] = grad[0] / hess(0, 0);
+				s[0] = grad[0] / (hess.coeff(0, 0) + (low_rank_hess ? -10 * a(0) * a(0) : 0));
 			}
 
 			// Get the full search direction
@@ -189,13 +206,15 @@ void SparseMMASolver::DualLineSearch() {
 }
 
 void SparseMMASolver::DualHess(VectorXr& x) {
+	low_rank_hess = false;
+
 	VectorXr df2(n);
 
 	const VectorXr pjlam = p0 + pij * lam;
 	const VectorXr qjlam = q0 + qij * lam;
 	// PQ = diag(1 / (upp - x)^2) * pij - diag(1 / (x - low)^2) * qij.
-	const MatrixXr PQ = pij.cwiseProduct((upp - x).cwiseAbs2().cwiseInverse() * RowVectorXr::Ones(m))
-		- qij.cwiseProduct((x - low).cwiseAbs2().cwiseInverse() * RowVectorXr::Ones(m));
+	const SparseMatrix PQ = SparseDiagonalMatrix((upp - x).cwiseAbs2().cwiseInverse()) * pij
+		- SparseDiagonalMatrix((x - low).cwiseAbs2().cwiseInverse()) * qij;
 	df2 = -1.0 / (2.0 * pjlam.array() / (upp - x).array().pow(3) + 2.0 * qjlam.array() / (x - low).array().pow(3));
 	const VectorXr sqrt_pjlam = pjlam.cwiseSqrt();
 	const VectorXr sqrt_qjlam = qjlam.cwiseSqrt();
@@ -204,26 +223,30 @@ void SparseMMASolver::DualHess(VectorXr& x) {
 	df2 = (xp.array() > beta.array()).select(0, df2);
 
 	// Create the matrix/matrix/matrix product: PQ^T * diag(df2) * PQ
-	hess = PQ.transpose() * df2.asDiagonal() * PQ;
+	const SparseMatrix PQ_transpose = PQ.transpose();
+	hess = PQ_transpose * SparseDiagonalMatrix(df2) * PQ;
 
 	const real lamai = lam.dot(a);
 	lam = lam.cwiseMax(0);
-	hess.diagonal() += (lam.array() > c.array()).select(-1, VectorXr::Zero(m));
-	hess.diagonal() += -mu.cwiseQuotient(lam);
+	hess += SparseDiagonalMatrix(
+		(lam.array() > c.array()).select(-1, VectorXr::Zero(m)) - mu.cwiseQuotient(lam)
+	);
 
 	if (lamai > 0.0) {
-		hess += -10.0 * a * a.transpose();
+		low_rank_hess = true;
+		// Now the true hess = hess - 10 * a * a.transpose().
+		// However, we do not modify hess because it will make the hessian dense.
 	}
 
 	// pos def check
-	const real HessTrace = hess.trace();
+	const real HessTrace = SparseMatrixTrace(hess);
 	real HessCorr = 1e-4 * HessTrace / m;
 
 	if (-1.0 * HessCorr < 1.0e-7) {
 		HessCorr = -1.0e-7;
 	}
 
-	hess.diagonal() += VectorXr::Constant(m, HessCorr);
+	hess += SparseDiagonalMatrix(VectorXr::Constant(m, HessCorr));
 }
 
 void SparseMMASolver::DualGrad(VectorXr& x) {
@@ -248,7 +271,7 @@ void SparseMMASolver::XYZofLAMBDA(VectorXr& x) {
 	x = x.cwiseMin(beta);
 }
 
-void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx, const MatrixXr& dgdx,
+void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const VectorXr& gx, const SparseMatrix& dgdx,
 	const VectorXr& xmin, const VectorXr& xmax)
 {
 	// Forward the iterator
@@ -293,15 +316,20 @@ void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const V
 	p0 = (upp - xval).cwiseAbs2().cwiseProduct(dfdxp + pq);
 	q0 = (xval - low).cwiseAbs2().cwiseProduct(dfdxm + pq);
 	// Constraints.
-	for (int i = 0; i < n; ++i) {
-		for (int j = 0; j < m; j++) {
-			real dgdxp = std::max(0.0, dgdx(j, i));
-			real dgdxm = std::max(0.0, -1.0 * dgdx(j, i));
-			real pq_ij = 0.001 * std::abs(dgdx(j, i)) + raa0 * xmamiinv(i);
-			pij(i, j) = std::pow(upp(i) - xval(i), 2.0) * (dgdxp + pq_ij);
-			qij(i, j) = std::pow(xval(i) - low(i), 2.0) * (dgdxm + pq_ij);
-		}
+	const auto dgdx_nonzeros = FromSparseMatrix(dgdx);
+	SparseMatrixElements pij_nonzeros, qij_nonzeros;
+	for (const auto& triplet : dgdx_nonzeros) {
+		const int j = triplet.row();
+		const int i = triplet.col();
+		const real dgdx_ji = triplet.value();
+		real dgdxp = std::max(0.0, dgdx_ji);
+		real dgdxm = std::max(0.0, -1.0 * dgdx_ji);
+		real pq_ij = 0.001 * std::abs(dgdx_ji) + raa0 * xmamiinv(i);
+		pij_nonzeros.push_back(Eigen::Triplet<real>(i, j, std::pow(upp(i) - xval(i), 2.0) * (dgdxp + pq_ij)));
+		qij_nonzeros.push_back(Eigen::Triplet<real>(i, j, std::pow(xval(i) - low(i), 2.0) * (dgdxm + pq_ij)));
 	}
+	pij = ToSparseMatrix(n, m, pij_nonzeros);
+	qij = ToSparseMatrix(n, m, qij_nonzeros);
 
 	// The constant for the constraints
 	b = -gx;

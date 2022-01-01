@@ -50,3 +50,31 @@ void Toc(const std::string& message) {
               << CyanTail() << std::endl;
     t_begins.pop();
 }
+
+const SparseMatrixElements FromSparseMatrix(const SparseMatrix& A) {
+    SparseMatrixElements nonzeros;
+    for (int k = 0; k < A.outerSize(); ++k)
+        for (SparseMatrix::InnerIterator it(A, k); it; ++it)
+            nonzeros.push_back(Eigen::Triplet<real>(it.row(), it.col(), it.value()));
+    return nonzeros;
+}
+
+const SparseMatrix ToSparseMatrix(const int row, const int col, const SparseMatrixElements& nonzeros) {
+    SparseMatrix A(row, col);
+    A.setFromTriplets(nonzeros.begin(), nonzeros.end());
+    return A;
+}
+
+const SparseMatrix SparseDiagonalMatrix(const VectorXr& diagonal) {
+    const int n = static_cast<int>(diagonal.size());
+    SparseMatrixElements nonzeros;
+    for (int i = 0; i < n; ++i) nonzeros.push_back(Eigen::Triplet<real>(i, i, diagonal(i)));
+    return ToSparseMatrix(n, n, nonzeros);
+}
+
+const real SparseMatrixTrace(const SparseMatrix& A) {
+    const int n = static_cast<int>(A.rows());
+    real trace = 0;
+    for (int i = 0; i < n; ++i) trace += A.coeff(i, i);
+    return trace;
+}
