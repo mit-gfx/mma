@@ -102,7 +102,4 @@ class SparseMMASolver {
 	void DualHess(VectorXr& x);
 	void DualLineSearch();
 	real DualResidual(VectorXr& x, real epsi);
-
-	static void Factorize(MatrixXr& K, int n);
-	static void Solve(MatrixXr& K, VectorXr& x, int n);
 };

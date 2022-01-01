@@ -189,90 +189,40 @@ void SparseMMASolver::DualLineSearch() {
 }
 
 void SparseMMASolver::DualHess(VectorXr& x) {
-	// TODO.
+	VectorXr df2(n);
 
-	real *df2 = new real[n];
-	real *PQ = new real[n * m];
-	#ifdef MMA_WITH_OPENMP
-	#pragma omp parallel for
-	#endif
-	for (int i = 0; i < n; i++) {
-		real pjlam = p0[i];
-		real qjlam = q0[i];
-		for (int j = 0; j < m; j++) {
-			pjlam += pij(i, j) * lam[j];
-			qjlam += qij(i, j) * lam[j];
-			PQ[i * m + j] = pij(i, j) / pow(upp[i] - x[i], 2.0) - qij(i, j) / pow(x[i] - low[i], 2.0);
-		}
-		df2[i] = -1.0 / (2.0 * pjlam / pow(upp[i] - x[i], 3.0) + 2.0 * qjlam / pow(x[i] - low[i], 3.0));
-		real xp = (sqrt(pjlam) * low[i] + sqrt(qjlam) * upp[i]) / (sqrt(pjlam) + sqrt(qjlam));
-		if (xp < alpha[i]) {
-			df2[i] = 0.0;
-		}
-		if (xp > beta[i]) {
-			df2[i] = 0.0;
-		}
-	}
+	const VectorXr pjlam = p0 + pij * lam;
+	const VectorXr qjlam = q0 + qij * lam;
+	const MatrixXr PQ = pij.cwiseProduct((upp - x).cwiseAbs2().cwiseInverse() * RowVectorXr::Ones(m))
+		- qij.cwiseProduct((x - low).cwiseAbs2().cwiseInverse() * RowVectorXr::Ones(m));
+	df2 = -1.0 / (2.0 * pjlam.array() / (upp - x).array().pow(3) + 2.0 * qjlam.array() / (x - low).array().pow(3));
+	const VectorXr sqrt_pjlam = pjlam.cwiseSqrt();
+	const VectorXr sqrt_qjlam = qjlam.cwiseSqrt();
+	const VectorXr xp = (sqrt_pjlam.cwiseProduct(low) + sqrt_qjlam.cwiseProduct(upp)).cwiseQuotient(sqrt_pjlam + sqrt_qjlam);
+	df2 = (xp.array() < alpha.array()).select(0, df2);
+	df2 = (xp.array() > beta.array()).select(0, df2);
 
 	// Create the matrix/matrix/matrix product: PQ^T * diag(df2) * PQ
-	real *tmp = new real[n * m];
-	for (int j = 0; j < m; j++) {
-		#ifdef MMA_WITH_OPENMP
-		#pragma omp parallel for
-		#endif
-		for (int i = 0; i < n; i++) {
-			tmp[j * n + i] = 0.0;
-			tmp[j * n + i] += PQ[i * m + j] * df2[i];
-		}
-	}
+	hess = PQ.transpose() * df2.asDiagonal() * PQ;
 
-	for (int i = 0; i < m; i++) {
-		for (int j = 0; j < m; j++) {
-			hess(i, j) = 0.0;
-			for (int k = 0; k < n; k++) {
-				hess(i, j) += tmp[i * n + k] * PQ[k * m + j];
-			}
-		}
-	}
-
-	real lamai = 0.0;
-	for (int j = 0; j < m; j++) {
-		if (lam[j] < 0.0) {
-			lam[j] = 0.0;
-		}
-		lamai += lam[j] * a[j];
-		if (lam[j] > c[j]) {
-			hess(j, j) += -1.0;
-		}
-		hess(j, j) += -mu[j] / lam[j];
-	}
+	const real lamai = lam.dot(a);
+	lam = lam.cwiseMax(0);
+	hess.diagonal() += (lam.array() > c.array()).select(-1, VectorXr::Zero(m));
+	hess.diagonal() += -mu.cwiseQuotient(lam);
 
 	if (lamai > 0.0) {
-		for (int j = 0; j < m; j++) {
-			for (int k = 0; k < m; k++) {
-				hess(j, k) += -10.0 * a[j] * a[k];
-			}
-		}
+		hess += -10.0 * a * a.transpose();
 	}
 
 	// pos def check
-	real HessTrace = 0.0;
-	for (int i = 0; i < m; i++) {
-		HessTrace += hess(i, i);
-	}
+	const real HessTrace = hess.trace();
 	real HessCorr = 1e-4 * HessTrace / m;
 
 	if (-1.0 * HessCorr < 1.0e-7) {
 		HessCorr = -1.0e-7;
 	}
 
-	for (int i = 0; i < m; i++) {
-		hess(i, i) += HessCorr;
-	}
-
-	delete[] df2;
-	delete[] PQ;
-	delete[] tmp;
+	hess.diagonal() += VectorXr::Constant(m, HessCorr);
 }
 
 void SparseMMASolver::DualGrad(VectorXr& x) {
@@ -358,35 +308,3 @@ void SparseMMASolver::GenSub(const VectorXr& xval, const VectorXr& dfdx, const V
 	const RowVectorXr inv_xval_low = (xval - low).cwiseInverse();
 	b += inv_upp_xval * pij + inv_xval_low * qij;
 }
-
-/*
-void SparseMMASolver::Factorize(MatrixXr& K, int n) {
-	for (int s = 0; s < n - 1; s++) {
-		for (int i = s + 1; i < n; i++) {
-			K(i, s) = K(i, s) / K(s, s);
-			for (int j = s + 1; j < n; j++) {
-				K(i, j) = K(i, j) - K(i, s) * K(s, j);
-			}
-		}
-	}
-}
-
-void SparseMMASolver::Solve(MatrixXr& K, VectorXr& x, int n) {
-	for (int i = 1; i < n; i++) {
-		real a = 0.0;
-		for (int j = 0; j < i; j++) {
-			a = a - K(i, j) * x[j];
-		}
-		x[i] = x[i] + a;
-	}
-
-	x[n - 1] = x[n - 1] / K(n - 1, n - 1);
-	for (int i = n - 2; i >= 0; i--) {
-		real a = x[i];
-		for (int j = i + 1; j < n; j++) {
-			a = a - K(i, j) * x[j];
-		}
-		x[i] = a / K(i, i);
-	}
-}
-*/
