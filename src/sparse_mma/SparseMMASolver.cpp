@@ -193,6 +193,7 @@ void SparseMMASolver::DualHess(VectorXr& x) {
 
 	const VectorXr pjlam = p0 + pij * lam;
 	const VectorXr qjlam = q0 + qij * lam;
+	// PQ = diag(1 / (upp - x)^2) * pij - diag(1 / (x - low)^2) * qij.
 	const MatrixXr PQ = pij.cwiseProduct((upp - x).cwiseAbs2().cwiseInverse() * RowVectorXr::Ones(m))
 		- qij.cwiseProduct((x - low).cwiseAbs2().cwiseInverse() * RowVectorXr::Ones(m));
 	df2 = -1.0 / (2.0 * pjlam.array() / (upp - x).array().pow(3) + 2.0 * qjlam.array() / (x - low).array().pow(3));
